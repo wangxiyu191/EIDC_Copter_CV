@@ -1,0 +1,5 @@
+/usr/bin/cmake -DCMAKE_BUILD_TYPE=Debug -G "CodeBlocks - Unix Makefiles" /home/pi/CLionProjects/opflow
+-- Found OpenCV: /usr/local (found version "3.2.0") 
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/pi/CLionProjects/opflow/cmake-build-debug
