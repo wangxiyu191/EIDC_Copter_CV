@@ -6,7 +6,7 @@
 
 #IncludeRegexTransform: 
 
-/home/pi/CLionProjects/opflow/main.cpp
+/home/wxy/Projects/EIDC/opflow/main.cpp
 errno.h
 -
 fcntl.h
@@ -33,10 +33,12 @@ vector
 -
 termios.h
 -
-wiringPi.h
--
-softPwm.h
--
+opencv2/imgproc.hpp
+/home/wxy/Projects/EIDC/opflow/opencv2/imgproc.hpp
+opencv2/optflow.hpp
+/home/wxy/Projects/EIDC/opflow/opencv2/optflow.hpp
+opencv2/highgui.hpp
+/home/wxy/Projects/EIDC/opflow/opencv2/highgui.hpp
 
 /usr/local/include/opencv/cxcore.h
 opencv2/core/core_c.h
@@ -154,6 +156,8 @@ nmmintrin.h
 popcntintrin.h
 -
 immintrin.h
+-
+arm_neon.h
 -
 immintrin.h
 -
@@ -346,6 +350,8 @@ opencv2/core.hpp
 opencv2/core.hpp
 /usr/local/include/opencv2/core/opencv2/core.hpp
 ostream
+-
+functional
 -
 opencv2/core/core_c.h
 /usr/local/include/opencv2/core/opencv2/core/core_c.h
@@ -946,6 +952,34 @@ opencv2/cudawarping.hpp
 
 /usr/local/include/opencv2/opencv_modules.hpp
 
+/usr/local/include/opencv2/optflow.hpp
+opencv2/core.hpp
+/usr/local/include/opencv2/opencv2/core.hpp
+opencv2/video.hpp
+/usr/local/include/opencv2/opencv2/video.hpp
+opencv2/optflow/pcaflow.hpp
+/usr/local/include/opencv2/opencv2/optflow/pcaflow.hpp
+opencv2/optflow/sparse_matching_gpc.hpp
+/usr/local/include/opencv2/opencv2/optflow/sparse_matching_gpc.hpp
+opencv2/optflow/motempl.hpp
+/usr/local/include/opencv2/opencv2/optflow/motempl.hpp
+
+/usr/local/include/opencv2/optflow/motempl.hpp
+opencv2/core.hpp
+/usr/local/include/opencv2/optflow/opencv2/core.hpp
+
+/usr/local/include/opencv2/optflow/pcaflow.hpp
+opencv2/core.hpp
+/usr/local/include/opencv2/optflow/opencv2/core.hpp
+opencv2/video.hpp
+/usr/local/include/opencv2/optflow/opencv2/video.hpp
+
+/usr/local/include/opencv2/optflow/sparse_matching_gpc.hpp
+opencv2/core.hpp
+/usr/local/include/opencv2/optflow/opencv2/core.hpp
+opencv2/imgproc.hpp
+/usr/local/include/opencv2/optflow/opencv2/imgproc.hpp
+
 /usr/local/include/opencv2/photo.hpp
 opencv2/core.hpp
 /usr/local/include/opencv2/opencv2/core.hpp
@@ -1278,7 +1312,17 @@ opencv2/videostab/global_motion.hpp
 opencv2/videostab/log.hpp
 /usr/local/include/opencv2/videostab/opencv2/videostab/log.hpp
 
-/usr/local/include/softPwm.h
+/usr/local/include/opencv2/xfeatures2d.hpp
+opencv2/features2d.hpp
+/usr/local/include/opencv2/opencv2/features2d.hpp
+opencv2/xfeatures2d/nonfree.hpp
+/usr/local/include/opencv2/opencv2/xfeatures2d/nonfree.hpp
 
-/usr/local/include/wiringPi.h
+/usr/local/include/opencv2/xfeatures2d/cuda.hpp
+opencv2/core/cuda.hpp
+/usr/local/include/opencv2/xfeatures2d/opencv2/core/cuda.hpp
+
+/usr/local/include/opencv2/xfeatures2d/nonfree.hpp
+opencv2/features2d.hpp
+/usr/local/include/opencv2/xfeatures2d/opencv2/features2d.hpp
 

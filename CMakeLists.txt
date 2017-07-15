@@ -8,4 +8,4 @@ set(SOURCE_FILES main.cpp)
 add_executable(opflow ${SOURCE_FILES})
 
 include_directories(${OpenCV_INCLUDE_DIRS} /usr/local/include/)
-target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS} /usr/local/lib/libwiringPi.so)
+target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})

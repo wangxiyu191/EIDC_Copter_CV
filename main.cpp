@@ -11,11 +11,13 @@
 #include <iostream>
 #include <vector>
 #include <termios.h>
-#include <wiringPi.h>
-#include <softPwm.h>
+#include "opencv2/imgproc.hpp"
+#include "opencv2/optflow.hpp"
+#include "opencv2/highgui.hpp"
 
 using namespace std;
 using namespace cv;
+using namespace cv::optflow;
 uchar *buffer;
 
 #define IMAGEWIDTH 320
@@ -44,6 +46,9 @@ int init_v4l2(void);
 
 int v4l2_grab(void);
 
+
+
+
 int main() {
     printf("first~~\n");
     if (init_v4l2() == FALSE) {
@@ -58,25 +63,27 @@ int main() {
     buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     buf.memory = V4L2_MEMORY_MMAP;
     printf("third~~\n");
-    namedWindow("origin", CV_WINDOW_AUTOSIZE);
-    namedWindow("prew", CV_WINDOW_AUTOSIZE);
-    namedWindow("gray", CV_WINDOW_AUTOSIZE);
 
 
-    TermCriteria termcrit(TermCriteria::COUNT | TermCriteria::EPS, 20, 0.03);
-    Size subPixWinSize(10, 10), winSize(31, 31);
 
-    const int MAX_COUNT = 500;
-    bool needToInit = false;
-    bool nightMode = false;
+    cv::setNumThreads(cv::getNumberOfCPUs()-1);
+
+
+
 
     vector<Point2f> points[2];
     Mat raw_input;
     Mat origin;
     Mat grey;
-    Mat prev_grey;
+    Mat prev;
     Mat flow;
+    Mat result;
     double t;
+
+
+    int preset = DISOpticalFlow::PRESET_FAST;
+    Ptr<DenseOpticalFlow> algo = createOptFlow_DIS(preset);
+
 
     while (1) {
         t = (double) getTickCount();
@@ -93,40 +100,54 @@ int main() {
         ioctl(fd, VIDIOC_QBUF, &buf);
 
         if (origin.empty()) printf("No img\n");
-        imshow("origin", origin);
+
 
 
         cvtColor(origin, grey, CV_RGB2GRAY);
+        //imshow("origin", grey);
 
 
-        if (nightMode)
-            origin = Scalar::all(0);
-
-        if (needToInit) {
-            // automatic initialization
-            goodFeaturesToTrack(grey, points[1], MAX_COUNT, 0.01, 10, Mat(), 3, 0, 0.04);
-            cornerSubPix(grey, points[1], subPixWinSize, Size(-1, -1), termcrit);
-        } else if (!points[0].empty()) {
-            puts("aaa");
-            vector<uchar> status;
-            vector<float> err;
-            if (prev_grey.empty())
-                grey.copyTo(prev_grey);
-            calcOpticalFlowPyrLK(prev_grey, grey, points[0], points[1], status, err, winSize,
-                                 3, termcrit, 0, 0.001);
-            size_t i, k;
-            for (i = k = 0; i < points[1].size(); i++) {
-
-                if (!status[i])
-                    continue;
-
-                points[1][k++] = points[1][i];
-                circle(origin, points[1][i], 3, Scalar(0, 255, 0), -1, 8);
-            }
-            points[1].resize(k);
-        }
 
 
+        if (prev.empty())
+            grey.copyTo(prev);
+        algo->calc(prev, grey, flow);
+        //motionToColor(flow, result);
+
+        Scalar sumMat = sum(flow);
+        int count = flow.cols*flow.rows;
+        //printf("X=%f\tY=%f\n",sumMat[0]/count,sumMat[1]/count);
+
+
+
+
+
+//        //extraxt x and y channels
+//        cv::Mat xy[2]; //X,Y
+//        cv::split(flow, xy);
+//
+////calculate angle and magnitude
+//        cv::Mat magnitude, angle;
+//        cv::cartToPolar(xy[0], xy[1], magnitude, angle, true);
+//
+////translate magnitude to range [0;1]
+//        double mag_max;
+//        cv::minMaxLoc(magnitude, 0, &mag_max);
+//        magnitude.convertTo(magnitude, -1, 1.0 / mag_max);
+//
+////build hsv image
+//        cv::Mat _hsv[3], hsv;
+//        _hsv[0] = angle;
+//        _hsv[1] = cv::Mat::ones(angle.size(), CV_32F);
+//        _hsv[2] = magnitude;
+//        cv::merge(_hsv, 3, hsv);
+//
+////convert to BGR and show
+//        cv::Mat bgr;//CV_32FC3 matrix
+//        cv::cvtColor(hsv, bgr, cv::COLOR_HSV2BGR);
+//        cv::imshow("optical flow", bgr);
+
+        //cv::waitKey(0);
 
 
 
@@ -138,30 +159,20 @@ int main() {
 //                    circle(origin, Point(x, y), 1, Scalar(0, 0, 0), -1);
 //                }
 //            }
-        imshow("prew", origin);
+        //imshow("prew", result);
 //            grey.copyTo(prev_grey);
 
 //
-        needToInit = false;
 
-        char c = (char) waitKey(10);
-        if (c == 27)
+        char c = (char) waitKey(1);
+        if (c == 27){
             break;
-        switch (c) {
-            case 'r':
-                needToInit = true;
-                break;
-            case 'c':
-                points[0].clear();
-                points[1].clear();
-                break;
-            case 'n':
-                nightMode = !nightMode;
-                break;
         }
 
-        std::swap(points[1], points[0]);
-        cv::swap(prev_grey, grey);
+        cv::swap(grey, prev);
+
+        //grey.copyTo(prev);
+
         t = (double) getTickCount() - t;
         printf("used time2 is %gms\n", (t / (getTickFrequency())) * 1000);
 
@@ -210,10 +221,10 @@ int init_v4l2(void) {
     }
     //set fmt
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    fmt.fmt.pix.width = IMAGEWIDTH;
-    fmt.fmt.pix.height = IMAGEHEIGHT;
-    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG; //*************************V4L2_PIX_FMT_YUYV****************
-    fmt.fmt.pix.field = V4L2_FIELD_NONE;
+    //fmt.fmt.pix.width = IMAGEWIDTH;
+    //fmt.fmt.pix.height = IMAGEHEIGHT;
+    //fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG; //*************************V4L2_PIX_FMT_YUYV****************
+    //fmt.fmt.pix.field = V4L2_FIELD_NONE;
 
 
     if (ioctl(fd, VIDIOC_S_FMT, &fmt) == -1) {
