@@ -6,14 +6,19 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/time.h>
 #include <unistd.h>
 #include <opencv2/opencv.hpp>
 #include <iostream>
 #include <vector>
-#include <termios.h>
+
 #include "opencv2/imgproc.hpp"
 #include "opencv2/optflow.hpp"
 #include "opencv2/highgui.hpp"
+
+
+
+#include "serial.h"
 
 using namespace std;
 using namespace cv;
@@ -32,6 +37,7 @@ uchar *buffer;
 #endif
 
 #define FILE_VIDEO1 "/dev/video0"
+#define SERIAL_PATH "/dev/ttySAC3"
 
 static int fd;
 struct v4l2_streamparm setfps;
@@ -45,11 +51,90 @@ enum v4l2_buf_type type;
 int init_v4l2(void);
 
 int v4l2_grab(void);
+int do_cv(void) ;
+void serve_serial(void);
 
 
+long long *sum_x = nullptr;
+long long *sum_y = nullptr;
 
 
-int main() {
+int main(){
+    //
+    pid_t f_pid;
+
+    sum_x = (long long  *)mmap(NULL,sizeof(long long),PROT_READ|PROT_WRITE,MAP_SHARED|MAP_ANONYMOUS,-1,0);
+    sum_y = (long long *)mmap(NULL,sizeof(long long),PROT_READ|PROT_WRITE,MAP_SHARED|MAP_ANONYMOUS,-1,0);
+    *sum_x = 0;
+    *sum_y = 0;
+    f_pid = fork();
+    if(f_pid<0){
+        puts("fork error");
+        return 1;
+    }else if(f_pid ==0){
+        do_cv();
+    }else{
+        serve_serial();
+    }
+    return 0;
+}
+
+
+void serve_serial(void){
+    long long last_us;
+    int fd = open(SERIAL_PATH,O_RDWR|O_NOCTTY);
+    if(fd == -1){
+        puts("cant open serial");
+        exit(1);
+    }
+    set_speed(fd,115200);
+    if (set_Parity(fd,8,1,'N') == FALSE)  {
+        printf("Set Parity Error\n");
+        exit (0);
+    }
+    puts("serial inited");
+    char buf[1000];
+    int buf_len = 0;
+    char tx_buf[100];
+
+    timeval now_time;
+    while(1){
+        char c;
+        read(fd,&c,1);
+        if(c == '\n'){
+            buf[buf_len]=0;
+            if(strcmp(buf,"HELLO")==0){
+                write(fd,"HELLO\n",6);
+                gettimeofday(&now_time,NULL);
+                last_us = (long long)now_time.tv_sec*(long long)10e6+now_time.tv_usec;
+                *sum_x=0;
+                *sum_y=0;
+                puts("handshake");
+            }else if(strcmp(buf,"DATA")==0){
+
+                gettimeofday(&now_time,NULL);
+                long long now_us = (long long)now_time.tv_sec*(long long)10e6+now_time.tv_usec;
+                sprintf(tx_buf,"%lld\n%lld\n%lld\n",*sum_x,*sum_y,now_us-last_us);
+                write(fd,tx_buf,strlen(tx_buf));
+                write(STDOUT_FILENO,tx_buf,strlen(tx_buf));
+                *sum_x=0;*sum_y=0;
+                gettimeofday(&now_time,NULL);
+                last_us = (long long)now_time.tv_sec*(long long)10e6+now_time.tv_usec;
+                puts("send_value");
+            }else if(strcmp(buf,"EXIT")==0){
+                break;
+            }
+            buf_len=0;
+        }else if (isalpha(c)){
+            buf[buf_len++]=c;
+        }else{
+            printf("get wrong char:%c\n",c);
+        }
+    }
+
+}
+
+int do_cv() {
     printf("first~~\n");
     if (init_v4l2() == FALSE) {
         printf("Init fail~~\n");
@@ -80,7 +165,6 @@ int main() {
     Mat result;
     double t;
 
-
     int preset = DISOpticalFlow::PRESET_FAST;
     Ptr<DenseOpticalFlow> algo = createOptFlow_DIS(preset);
 
@@ -89,7 +173,7 @@ int main() {
         t = (double) getTickCount();
         ioctl(fd, VIDIOC_DQBUF, &buf);
         t = (double) getTickCount() - t;
-        printf("used time1 is %gms\n", (t / (getTickFrequency())) * 1000);
+        //printf("used time1 is %gms\n", (t / (getTickFrequency())) * 1000);
 
         t = (double) getTickCount();
         buf.index = 0;
@@ -116,8 +200,9 @@ int main() {
 
         Scalar sumMat = sum(flow);
         int count = flow.cols*flow.rows;
-        //printf("X=%f\tY=%f\n",sumMat[0]/count,sumMat[1]/count);
-
+        //printf("X=%lld\tY=%lld\n",*sum_x,*sum_y);
+        *sum_x+=sumMat[0];
+        *sum_y+=sumMat[1];
 
 
 
@@ -174,7 +259,7 @@ int main() {
         //grey.copyTo(prev);
 
         t = (double) getTickCount() - t;
-        printf("used time2 is %gms\n", (t / (getTickFrequency())) * 1000);
+        //printf("used time2 is %gms\n", (t / (getTickFrequency())) * 1000);
 
     }
 
@@ -221,10 +306,10 @@ int init_v4l2(void) {
     }
     //set fmt
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    //fmt.fmt.pix.width = IMAGEWIDTH;
-    //fmt.fmt.pix.height = IMAGEHEIGHT;
-    //fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG; //*************************V4L2_PIX_FMT_YUYV****************
-    //fmt.fmt.pix.field = V4L2_FIELD_NONE;
+    fmt.fmt.pix.width = IMAGEWIDTH;
+    fmt.fmt.pix.height = IMAGEHEIGHT;
+    fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG; //*************************V4L2_PIX_FMT_YUYV****************
+    fmt.fmt.pix.field = V4L2_FIELD_NONE;
 
 
     if (ioctl(fd, VIDIOC_S_FMT, &fmt) == -1) {

@@ -3,6 +3,8 @@
 
 CMakeFiles/opflow.dir/main.cpp.o
  /home/wxy/Projects/EIDC/opflow/main.cpp
+ /home/wxy/Projects/EIDC/opflow/serial.cpp
+ /home/wxy/Projects/EIDC/opflow/serial.h
  /usr/local/include/opencv/cxcore.h
  /usr/local/include/opencv2/calib3d.hpp
  /usr/local/include/opencv2/calib3d/calib3d_c.h

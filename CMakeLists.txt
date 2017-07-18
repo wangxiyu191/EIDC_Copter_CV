@@ -4,7 +4,7 @@ find_package(OpenCV REQUIRED)
 
 set(CMAKE_CXX_STANDARD 11)
 
-set(SOURCE_FILES main.cpp)
+set(SOURCE_FILES main.cpp )
 add_executable(opflow ${SOURCE_FILES})
 
 include_directories(${OpenCV_INCLUDE_DIRS} /usr/local/include/)
