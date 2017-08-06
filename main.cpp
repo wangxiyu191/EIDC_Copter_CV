@@ -38,6 +38,7 @@ uchar *buffer;
 
 #define FILE_VIDEO1 "/dev/video0"
 #define SERIAL_PATH "/dev/ttySAC3"
+#define SERIAL_PATH_1 "/dev/ttySAC4"
 
 static int fd;
 struct v4l2_streamparm setfps;
@@ -53,10 +54,12 @@ int init_v4l2(void);
 int v4l2_grab(void);
 int do_cv(void) ;
 void serve_serial(void);
-
-
+void serve_serial1(void);
 long long *sum_x = nullptr;
 long long *sum_y = nullptr;
+
+uint16_t *offest_x = nullptr;
+uint16_t *offest_y = nullptr;
 
 
 int main(){
@@ -65,6 +68,8 @@ int main(){
 
     sum_x = (long long  *)mmap(NULL,sizeof(long long),PROT_READ|PROT_WRITE,MAP_SHARED|MAP_ANONYMOUS,-1,0);
     sum_y = (long long *)mmap(NULL,sizeof(long long),PROT_READ|PROT_WRITE,MAP_SHARED|MAP_ANONYMOUS,-1,0);
+    offest_x = (uint16_t *)mmap(NULL,sizeof(uint16_t),PROT_READ|PROT_WRITE,MAP_SHARED|MAP_ANONYMOUS,-1,0);
+    offest_y = (uint16_t *)mmap(NULL,sizeof(uint16_t),PROT_READ|PROT_WRITE,MAP_SHARED|MAP_ANONYMOUS,-1,0);
     *sum_x = 0;
     *sum_y = 0;
     f_pid = fork();
@@ -74,9 +79,62 @@ int main(){
     }else if(f_pid ==0){
         do_cv();
     }else{
-        serve_serial();
+        pid_t f1_pid;
+        f1_pid = fork();
+        if(f1_pid < 0){
+            puts("fork error 1");
+            return 1;
+        }else if(f1_pid == 0){
+            serve_serial();
+        }else{
+            serve_serial1();
+        }
+
     }
     return 0;
+}
+
+struct DataForMCU{
+    const uint8_t Head = 0xff;
+    const char X_chr = 'x';
+    uint16_t x;
+    const uint8_t Mid = 0xfe;
+    const char Y_chr = 'y';
+    uint16_t y;
+    const uint8_t Tail = 0xf0;
+    uint8_t TL_Flag; //1:takeoff 0:land;
+};
+
+void serve_serial1(void){
+    long long last_us;
+    int fd = open(SERIAL_PATH_1,O_RDWR|O_NOCTTY);
+    if(fd == -1){
+        puts("cant open serial");
+        exit(1);
+    }
+    set_speed(fd,115200);
+    if (set_Parity(fd,8,1,'N') == FALSE)  {
+        printf("Set Parity Error\n");
+        exit (0);
+    }
+    puts("serial1 inited");
+    char buf[1000];
+    int buf_len = 0;
+    char tx_buf[100];
+
+    timeval now_time;
+    while(1){
+        DataForMCU tmp;
+        tmp.x = *offest_x;
+        tmp.y = *offest_y;
+        tmp.TL_Flag = 1;
+        write(fd,&tmp,sizeof(tmp));
+        usleep(1000*50);
+        if((buf-buf)==1){ // false
+            break;
+        }
+    }
+
 }
 
 
@@ -149,6 +207,8 @@ int do_cv() {
     buf.memory = V4L2_MEMORY_MMAP;
     printf("third~~\n");
 
+    system("sudo /home/fa/Projects/opflow/matrix-gpio_out");
+
 
 
     cv::setNumThreads(cv::getNumberOfCPUs()-1);
@@ -199,10 +259,22 @@ int do_cv() {
         //motionToColor(flow, result);
 
         Scalar sumMat = sum(flow);
-        int count = flow.cols*flow.rows;
+
+        Mat flowMat[2];
+        split(flow,flowMat);
+
+        int count0 = countNonZero(flowMat[0]);
+        int count1 = countNonZero(flowMat[1]);
+
+
+
+        //int count = flow.cols*flow.rows;
         //printf("X=%lld\tY=%lld\n",*sum_x,*sum_y);
-        *sum_x+=sumMat[0];
-        *sum_y+=sumMat[1];
+        double ave[2];
+        ave[0]=1.0*sumMat[0]/count0*(flow.cols*flow.rows);
+        ave[1]=1.0*sumMat[1]/count1*(flow.cols*flow.rows);
+        *sum_x+=ave[0];
+        *sum_y+=ave[1];
 
 
 
@@ -248,6 +320,41 @@ int do_cv() {
 //            grey.copyTo(prev_grey);
 
 //
+
+        Mat hsv;
+        cvtColor(origin,hsv,CV_RGB2HSV);
+        Mat chosen;
+
+        //choose red
+        Mat mask1,mask2,mask ;
+        inRange(hsv,Scalar(0,43,46),Scalar(10,255,255),mask1);
+        inRange(hsv,Scalar(156,43,46),Scalar(180,255,255),mask2);
+        mask = mask1+mask2;
+        erode(mask,mask,NULL);
+        dilate(mask,mask,NULL);
+        vector<vector<Point>> contours;
+        vector<Vec4i> hierarchy;
+        findContours(mask,contours,hierarchy,CV_RETR_EXTERNAL,CV_CHAIN_APPROX_SIMPLE);
+        if(contours.size()>0){
+            double largest_area=0;
+            int largest_area_id=0;
+            for(int i=0;i<contours.size();i++){
+                double tmp = contourArea(contours[i]);
+                if(tmp>largest_area){
+                    largest_area = tmp;
+                    largest_area_id = i;
+                }
+            }
+            Point2f center;float radius;
+            minEnclosingCircle(contours[largest_area_id],center,radius);
+
+            *offest_x = (uint16_t)center.x;
+            *offest_y = (uint16_t)center.y;
+        }
+
+
+
+
 
         char c = (char) waitKey(1);
         if (c == 27){
@@ -374,7 +481,7 @@ int v4l2_grab(void) {
             printf("buffer map error\n");
             return FALSE;
         }
-        printf("Length: %d\nAddress: %p\n", buf.length, buffer);
+        printf("Length: %d\nAddress: %p\n", buf.length, (void *)buffer);
         printf("Image Length: %d\n", buf.bytesused);
     }
     //6 queue
