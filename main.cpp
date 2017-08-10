@@ -11,11 +11,11 @@
 #include <opencv2/opencv.hpp>
 #include <iostream>
 #include <vector>
+#include <thread>
 
 #include "opencv2/imgproc.hpp"
 #include "opencv2/optflow.hpp"
 #include "opencv2/highgui.hpp"
-
 
 
 #include "serial.h"
@@ -52,9 +52,13 @@ enum v4l2_buf_type type;
 int init_v4l2(void);
 
 int v4l2_grab(void);
-int do_cv(void) ;
+
+int do_cv(void);
+
 void serve_serial(void);
+
 void serve_serial1(void);
+
 long long *sum_x = nullptr;
 long long *sum_y = nullptr;
 
@@ -62,31 +66,31 @@ uint16_t *offest_x = nullptr;
 uint16_t *offest_y = nullptr;
 
 
-int main(){
+int main() {
     //
     pid_t f_pid;
 
-    sum_x = (long long  *)mmap(NULL,sizeof(long long),PROT_READ|PROT_WRITE,MAP_SHARED|MAP_ANONYMOUS,-1,0);
-    sum_y = (long long *)mmap(NULL,sizeof(long long),PROT_READ|PROT_WRITE,MAP_SHARED|MAP_ANONYMOUS,-1,0);
-    offest_x = (uint16_t *)mmap(NULL,sizeof(uint16_t),PROT_READ|PROT_WRITE,MAP_SHARED|MAP_ANONYMOUS,-1,0);
-    offest_y = (uint16_t *)mmap(NULL,sizeof(uint16_t),PROT_READ|PROT_WRITE,MAP_SHARED|MAP_ANONYMOUS,-1,0);
+    sum_x = (long long *) mmap(NULL, sizeof(long long), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    sum_y = (long long *) mmap(NULL, sizeof(long long), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    offest_x = (uint16_t *) mmap(NULL, sizeof(uint16_t), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    offest_y = (uint16_t *) mmap(NULL, sizeof(uint16_t), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     *sum_x = 0;
     *sum_y = 0;
     f_pid = fork();
-    if(f_pid<0){
+    if (f_pid < 0) {
         puts("fork error");
         return 1;
-    }else if(f_pid ==0){
+    } else if (f_pid == 0) {
         do_cv();
-    }else{
+    } else {
         pid_t f1_pid;
         f1_pid = fork();
-        if(f1_pid < 0){
+        if (f1_pid < 0) {
             puts("fork error 1");
             return 1;
-        }else if(f1_pid == 0){
+        } else if (f1_pid == 0) {
             serve_serial();
-        }else{
+        } else {
             serve_serial1();
         }
 
@@ -94,7 +98,7 @@ int main(){
     return 0;
 }
 
-struct DataForMCU{
+struct DataForMCU {
     const uint8_t Head = 0xff;
     const char X_chr = 'x';
     uint16_t x;
@@ -105,17 +109,17 @@ struct DataForMCU{
     uint8_t TL_Flag; //1:takeoff 0:land;
 };
 
-void serve_serial1(void){
+void serve_serial1(void) {
     long long last_us;
-    int fd = open(SERIAL_PATH_1,O_RDWR|O_NOCTTY);
-    if(fd == -1){
+    int fd = open(SERIAL_PATH_1, O_RDWR | O_NOCTTY);
+    if (fd == -1) {
         puts("cant open serial");
         exit(1);
     }
-    set_speed(fd,115200);
-    if (set_Parity(fd,8,1,'N') == FALSE)  {
+    set_speed(fd, 38400);
+    if (set_Parity(fd, 8, 1, 'N') == FALSE) {
         printf("Set Parity Error\n");
-        exit (0);
+        exit(0);
     }
     puts("serial1 inited");
     char buf[1000];
@@ -123,32 +127,29 @@ void serve_serial1(void){
     char tx_buf[100];
 
     timeval now_time;
-    while(1){
+    while (1) {
         DataForMCU tmp;
         tmp.x = *offest_x;
         tmp.y = *offest_y;
         tmp.TL_Flag = 1;
-        write(fd,&tmp,sizeof(tmp));
-        usleep(1000*50);
-        if((buf-buf)==1){ // false
-            break;
-        }
+        write(fd, &tmp, sizeof(tmp));
+        usleep(1000 * 50);
     }
 
 }
 
 
-void serve_serial(void){
+void serve_serial(void) {
     long long last_us;
-    int fd = open(SERIAL_PATH,O_RDWR|O_NOCTTY);
-    if(fd == -1){
+    int fd = open(SERIAL_PATH, O_RDWR | O_NOCTTY);
+    if (fd == -1) {
         puts("cant open serial");
         exit(1);
     }
-    set_speed(fd,115200);
-    if (set_Parity(fd,8,1,'N') == FALSE)  {
+    set_speed(fd, 115200);
+    if (set_Parity(fd, 8, 1, 'N') == FALSE) {
         printf("Set Parity Error\n");
-        exit (0);
+        exit(0);
     }
     puts("serial inited");
     char buf[1000];
@@ -156,128 +157,75 @@ void serve_serial(void){
     char tx_buf[100];
 
     timeval now_time;
-    while(1){
+    while (1) {
         char c;
-        read(fd,&c,1);
-        if(c == '\n'){
-            buf[buf_len]=0;
-            if(strcmp(buf,"HELLO")==0){
-                write(fd,"HELLO\n",6);
-                gettimeofday(&now_time,NULL);
-                last_us = (long long)now_time.tv_sec*(long long)10e6+now_time.tv_usec;
-                *sum_x=0;
-                *sum_y=0;
+        read(fd, &c, 1);
+        if (c == '\n') {
+            buf[buf_len] = 0;
+            if (strcmp(buf, "HELLO") == 0) {
+                write(fd, "HELLO\n", 6);
+                gettimeofday(&now_time, NULL);
+                last_us = (long long) now_time.tv_sec * (long long) 10e6 + now_time.tv_usec;
+                *sum_x = 0;
+                *sum_y = 0;
                 puts("handshake");
-            }else if(strcmp(buf,"DATA")==0){
+            } else if (strcmp(buf, "DATA") == 0) {
 
-                gettimeofday(&now_time,NULL);
-                long long now_us = (long long)now_time.tv_sec*(long long)10e6+now_time.tv_usec;
-                sprintf(tx_buf,"%lld\n%lld\n%lld\n",*sum_x,*sum_y,now_us-last_us);
-                write(fd,tx_buf,strlen(tx_buf));
-                write(STDOUT_FILENO,tx_buf,strlen(tx_buf));
-                *sum_x=0;*sum_y=0;
-                gettimeofday(&now_time,NULL);
-                last_us = (long long)now_time.tv_sec*(long long)10e6+now_time.tv_usec;
+                gettimeofday(&now_time, NULL);
+                long long now_us = (long long) now_time.tv_sec * (long long) 10e6 + now_time.tv_usec;
+                sprintf(tx_buf, "%lld\n%lld\n%lld\n", *sum_x, *sum_y, now_us - last_us);
+                write(fd, tx_buf, strlen(tx_buf));
+                write(STDOUT_FILENO, tx_buf, strlen(tx_buf));
+                *sum_x = 0;
+                *sum_y = 0;
+                gettimeofday(&now_time, NULL);
+                last_us = (long long) now_time.tv_sec * (long long) 10e6 + now_time.tv_usec;
                 puts("send_value");
-            }else if(strcmp(buf,"EXIT")==0){
+            } else if (strcmp(buf, "EXIT") == 0) {
                 break;
             }
-            buf_len=0;
-        }else if (isalpha(c)){
-            buf[buf_len++]=c;
-        }else{
-            printf("get wrong char:%c\n",c);
+            buf_len = 0;
+        } else if (isalpha(c)) {
+            buf[buf_len++] = c;
+        } else {
+            printf("get wrong char:%c\n", c);
         }
     }
 
 }
 
-int do_cv() {
-    printf("first~~\n");
-    if (init_v4l2() == FALSE) {
-        printf("Init fail~~\n");
-        exit(1);
-    }
-    printf("second~~\n");
-    if (v4l2_grab() == FALSE) {
-        printf("grab fail~~\n");
-        exit(2);
-    }
-    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    buf.memory = V4L2_MEMORY_MMAP;
-    printf("third~~\n");
 
-    system("sudo /home/fa/Projects/opflow/matrix-gpio_out");
-
-
-
-    cv::setNumThreads(cv::getNumberOfCPUs()-1);
-
-
-
-
+void do_optflow(const Mat &origin, Mat &prev, const Ptr<DenseOpticalFlow> algo) {
     vector<Point2f> points[2];
-    Mat raw_input;
-    Mat origin;
     Mat grey;
-    Mat prev;
     Mat flow;
     Mat result;
-    double t;
-
-    int preset = DISOpticalFlow::PRESET_FAST;
-    Ptr<DenseOpticalFlow> algo = createOptFlow_DIS(preset);
 
 
-    while (1) {
-        t = (double) getTickCount();
-        ioctl(fd, VIDIOC_DQBUF, &buf);
-        t = (double) getTickCount() - t;
-        //printf("used time1 is %gms\n", (t / (getTickFrequency())) * 1000);
+    cvtColor(origin, grey, CV_RGB2GRAY);
+    if (prev.empty()) {
+        grey.copyTo(prev);
+    }
 
-        t = (double) getTickCount();
-        buf.index = 0;
-        raw_input = Mat(IMAGEHEIGHT, IMAGEWIDTH, CV_8UC3, (void *) buffer);//CV_8UC3
+    algo->calc(prev, grey, flow);
 
+    Scalar sumMat = sum(flow);
 
-        imdecode(raw_input, 1).copyTo(origin);
-        ioctl(fd, VIDIOC_QBUF, &buf);
+    Mat flowMat[2];
+    split(flow, flowMat);
 
-        if (origin.empty()) printf("No img\n");
+    int count0 = countNonZero(flowMat[0]);
+    int count1 = countNonZero(flowMat[1]);
 
-
-
-        cvtColor(origin, grey, CV_RGB2GRAY);
-        //imshow("origin", grey);
-
-
-
-
-        if (prev.empty())
-            grey.copyTo(prev);
-        algo->calc(prev, grey, flow);
-        //motionToColor(flow, result);
-
-        Scalar sumMat = sum(flow);
-
-        Mat flowMat[2];
-        split(flow,flowMat);
-
-        int count0 = countNonZero(flowMat[0]);
-        int count1 = countNonZero(flowMat[1]);
-
-
-
-        //int count = flow.cols*flow.rows;
-        //printf("X=%lld\tY=%lld\n",*sum_x,*sum_y);
-        double ave[2];
-        ave[0]=1.0*sumMat[0]/count0*(flow.cols*flow.rows);
-        ave[1]=1.0*sumMat[1]/count1*(flow.cols*flow.rows);
-        *sum_x+=ave[0];
-        *sum_y+=ave[1];
-
-
-
+    //int count = flow.cols*flow.rows;
+    //printf("X=%lld\tY=%lld\n",*sum_x,*sum_y);
+    double ave[2];
+    ave[0] = 1.0 * sumMat[0] / count0 * (flow.cols * flow.rows);
+    ave[1] = 1.0 * sumMat[1] / count1 * (flow.cols * flow.rows);
+    *sum_x += ave[0];
+    *sum_y += ave[1];
+    grey.copyTo(prev);
+    //cv::swap(grey, prev);
 
 //        //extraxt x and y channels
 //        cv::Mat xy[2]; //X,Y
@@ -304,64 +252,105 @@ int do_cv() {
 //        cv::cvtColor(hsv, bgr, cv::COLOR_HSV2BGR);
 //        cv::imshow("optical flow", bgr);
 
-        //cv::waitKey(0);
+    //cv::waitKey(0);
 
+}
 
+void do_objfind(const Mat &origin) {
+    Mat hsv;
 
-//            for (int y = 0; y < origin.rows; y += 5) {
-//                for (int x = 0; x < origin.cols; x += 5) {
-//                    const Point2f flowatxy = flow.at<Point2f>(y, x) * 10;
-//                    line(origin, Point(x, y), Point(cvRound(x + flowatxy.x), cvRound(y + flowatxy.y)),
-//                         Scalar(255, 0, 0));
-//                    circle(origin, Point(x, y), 1, Scalar(0, 0, 0), -1);
-//                }
-//            }
-        //imshow("prew", result);
-//            grey.copyTo(prev_grey);
+    cvtColor(origin, hsv, CV_BGR2HSV);
+    Mat chosen;
 
-//
-
-        Mat hsv;
-        cvtColor(origin,hsv,CV_RGB2HSV);
-        Mat chosen;
-
-        //choose red
-        Mat mask1,mask2,mask ;
-        inRange(hsv,Scalar(0,43,46),Scalar(10,255,255),mask1);
-        inRange(hsv,Scalar(156,43,46),Scalar(180,255,255),mask2);
-        mask = mask1+mask2;
-        erode(mask,mask,NULL);
-        dilate(mask,mask,NULL);
-        vector<vector<Point>> contours;
-        vector<Vec4i> hierarchy;
-        findContours(mask,contours,hierarchy,CV_RETR_EXTERNAL,CV_CHAIN_APPROX_SIMPLE);
-        if(contours.size()>0){
-            double largest_area=0;
-            int largest_area_id=0;
-            for(int i=0;i<contours.size();i++){
-                double tmp = contourArea(contours[i]);
-                if(tmp>largest_area){
-                    largest_area = tmp;
-                    largest_area_id = i;
-                }
+    //choose green
+    Mat mask;
+    inRange(hsv, Scalar(45, 100, 50), Scalar(75, 255, 255), mask);
+    //imshow("origin",origin);
+    //origin.copyTo(chosen,mask);
+    //imshow("chosen",chosen);
+    //imshow("lab",hsv);
+    //inRange(hsv,Scalar(156,43,46),Scalar(180,255,255),mask2);
+    erode(mask, mask, Mat());
+    dilate(mask, mask, Mat());
+    vector<vector<Point>> contours;
+    vector<Vec4i> hierarchy;
+    findContours(mask, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
+    if (contours.size() > 0) {
+        double largest_area = 0;
+        int largest_area_id = 0;
+        for (int i = 0; i < contours.size(); i++) {
+            double tmp = contourArea(contours[i]);
+            if (tmp > largest_area) {
+                largest_area = tmp;
+                largest_area_id = i;
             }
-            Point2f center;float radius;
-            minEnclosingCircle(contours[largest_area_id],center,radius);
-
-            *offest_x = (uint16_t)center.x;
-            *offest_y = (uint16_t)center.y;
         }
+        Point2f center;
+        float radius;
+        minEnclosingCircle(contours[largest_area_id], center, radius);
+        Moments M = moments(contours[largest_area_id]);
+        center = Point2f(M.m10 / M.m00, M.m01 / M.m00);
+        *offest_x = (uint16_t) center.x;
+        *offest_y = (uint16_t) center.y;
+        //printf("x=%u y=%u r=%f\n",*offest_x,*offest_y,radius);
+    } else {
+        *offest_x = (uint16_t) 0xFFFF;
+        *offest_y = (uint16_t) 0xFFFF;
+    }
 
 
+}
 
 
+int do_cv() {
+    printf("first~~\n");
+    if (init_v4l2() == FALSE) {
+        printf("Init fail~~\n");
+        exit(1);
+    }
+    printf("second~~\n");
+    if (v4l2_grab() == FALSE) {
+        printf("grab fail~~\n");
+        exit(2);
+    }
+    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    buf.memory = V4L2_MEMORY_MMAP;
+    printf("third~~\n");
 
-        char c = (char) waitKey(1);
-        if (c == 27){
-            break;
+    system("sudo /home/fa/Projects/opflow/matrix-gpio_out");
+
+    cv::setNumThreads(cv::getNumberOfCPUs() - 1);
+
+    Mat raw_input;
+    Mat origin;
+    double t;
+    Mat prev;
+    int preset = DISOpticalFlow::PRESET_FAST;
+    Ptr<DenseOpticalFlow> algo = createOptFlow_DIS(preset);
+
+    while (1) {
+        t = (double) getTickCount();
+        ioctl(fd, VIDIOC_DQBUF, &buf);
+        t = (double) getTickCount() - t;
+        //printf("used time1 is %gms\n", (t / (getTickFrequency())) * 1000);
+
+        t = (double) getTickCount();
+        buf.index = 0;
+        raw_input = Mat(IMAGEHEIGHT, IMAGEWIDTH, CV_8UC3, (void *) buffer);//CV_8UC3
+
+
+        imdecode(raw_input, 1).copyTo(origin);
+        ioctl(fd, VIDIOC_QBUF, &buf);
+
+
+        if (origin.empty())
+            printf("No img\n");
+        else {
+            thread objfind_thread(do_objfind, origin);
+            thread optflow_thread(do_optflow, origin, std::ref(prev), algo);
+            optflow_thread.join();
+            objfind_thread.join();
         }
-
-        cv::swap(grey, prev);
 
         //grey.copyTo(prev);
 
@@ -481,7 +470,7 @@ int v4l2_grab(void) {
             printf("buffer map error\n");
             return FALSE;
         }
-        printf("Length: %d\nAddress: %p\n", buf.length, (void *)buffer);
+        printf("Length: %d\nAddress: %p\n", buf.length, (void *) buffer);
         printf("Image Length: %d\n", buf.bytesused);
     }
     //6 queue
