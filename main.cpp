@@ -65,15 +65,18 @@ long long *sum_y = nullptr;
 uint16_t *offest_x = nullptr;
 uint16_t *offest_y = nullptr;
 
+int *mission_id = nullptr;
 
 int main() {
-    //
+
     pid_t f_pid;
 
     sum_x = (long long *) mmap(NULL, sizeof(long long), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     sum_y = (long long *) mmap(NULL, sizeof(long long), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     offest_x = (uint16_t *) mmap(NULL, sizeof(uint16_t), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
     offest_y = (uint16_t *) mmap(NULL, sizeof(uint16_t), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    mission_id = (int *) mmap(NULL, sizeof(int), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    *mission_id = 3;
     *sum_x = 0;
     *sum_y = 0;
     f_pid = fork();
@@ -122,25 +125,47 @@ void serve_serial1(void) {
         exit(0);
     }
     puts("serial1 inited");
-    char buf[1000];
-    int buf_len = 0;
-    char tx_buf[100];
 
-    timeval now_time;
-    while (1) {
-        DataForMCU tmp;
-        tmp.x = *offest_x;
-        tmp.y = *offest_y;
-        tmp.TL_Flag = 1;
-        write(fd, &tmp, sizeof(tmp));
-        usleep(1000 * 50);
+    pid_t read_pid;
+    read_pid = fork();
+    if (read_pid < 0) {
+        puts("fork error");
+        return;
+    } else if (read_pid == 0) {
+        //read
+        while (1) {
+            char command;
+            read(fd, &command, 1);
+            if (command >= 'A' && command <= 'Z') {
+                //A: find black point
+                //B: find green car
+                *mission_id = command - 'A' + 1;
+            } else {
+                *mission_id = 'A';
+            }
+        }
+    } else {
+        //write
+        while (1) {
+            if (*mission_id == 3) {
+                usleep(1000 * 50);
+                continue;
+            }
+
+            DataForMCU tmp;
+            tmp.x = *offest_x;
+            tmp.y = *offest_y;
+            tmp.TL_Flag = 1;
+            write(fd, &tmp, sizeof(tmp));
+            usleep(1000 * 50);
+        }
     }
 
 }
 
 
 void serve_serial(void) {
-    long long last_us;
+    long long last_us = 0;
     int fd = open(SERIAL_PATH, O_RDWR | O_NOCTTY);
     if (fd == -1) {
         puts("cant open serial");
@@ -257,14 +282,26 @@ void do_optflow(const Mat &origin, Mat &prev, const Ptr<DenseOpticalFlow> algo) 
 }
 
 void do_objfind(const Mat &origin) {
-    Mat hsv;
-
-    cvtColor(origin, hsv, CV_BGR2HSV);
     Mat chosen;
-
-    //choose green
+    //choose
     Mat mask;
-    inRange(hsv, Scalar(45, 100, 50), Scalar(75, 255, 255), mask);
+    Mat grey;
+    Mat hsv;
+    switch (*mission_id) {
+        case 1:
+            //black
+            cvtColor(origin, grey, CV_BGR2GRAY);
+            equalizeHist(grey, grey);
+            inRange(grey, Scalar(0), Scalar(20), mask);
+            break;
+        case 2:
+            //green
+            cvtColor(origin, hsv, CV_BGR2HSV);
+            inRange(hsv, Scalar(45, 100, 50), Scalar(75, 255, 255), mask);
+            break;
+        default:
+            return;
+    }
     //imshow("origin",origin);
     //origin.copyTo(chosen,mask);
     //imshow("chosen",chosen);
@@ -288,10 +325,16 @@ void do_objfind(const Mat &origin) {
         Point2f center;
         float radius;
         minEnclosingCircle(contours[largest_area_id], center, radius);
-        Moments M = moments(contours[largest_area_id]);
-        center = Point2f(M.m10 / M.m00, M.m01 / M.m00);
-        *offest_x = (uint16_t) center.x;
-        *offest_y = (uint16_t) center.y;
+        if ((*mission_id == 1 && radius > 10) ||
+            (*mission_id == 2 && radius > 10 && radius < 110)) {
+            Moments M = moments(contours[largest_area_id]);
+            center = Point2f(M.m10 / M.m00, M.m01 / M.m00);
+            *offest_x = (uint16_t) center.x;
+            *offest_y = (uint16_t) center.y;
+        } else {
+            *offest_x = (uint16_t) 0xffff;
+            *offest_y = (uint16_t) 0xffff;
+        }
         //printf("x=%u y=%u r=%f\n",*offest_x,*offest_y,radius);
     } else {
         *offest_x = (uint16_t) 0xFFFF;
